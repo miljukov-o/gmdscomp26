@@ -289,31 +289,48 @@ has_qualitative_signal <- function(effect) {
 }
 
 summarise_variable_priority <- function(effect_data_var, overall_effect, min_arm_n = 10L) {
+  # 1. Effektstreuung über die Gruppen einer Variable
+  # Wie stark weicht der beobachtete Treatment Effekt entlang der Bins oder Stufen von seinem globalen Datensatz Effekt ab?
+  # Was das übersehen kann:
+  # - glatte schwache Verläufe
+  # - multivariate Strukturen
+  # - Muster, die nur in Kombination mit einer anderen Variablen sichtbar werden
+  
+  # 2. Richtungsmuster
+  # Gibt es nur zufälliges Zackenverhalten, oder sieht man etwas Strukturierteres, zum Beispiel Schwelle, monotone Änderung oder sogar Vorzeichenwechsel?
+  # Was das übersehen kann:
+  # - nichtmonotone, aber echte Muster
+  # - lokale Inseln
+  # - durch Korrelation verschobene Signale
+  
+  # 3. Stabilität beziehungsweise Support
+  #  Beruht das Muster auf ausreichend großen Gruppen, oder hängt alles an kleinen Zellen?
+  # Was das übersehen kann:
+  # - echte, aber kleine Subgruppen
+  # - scharfe Effekte in kleinen Bereichen
+  
   arm_sizes <- pmin(effect_data_var$n_control, effect_data_var$n_treatment)
   
   tibble::tibble(
+    # wie stark die gruppenspezifischen Effekte im Mittel vom globalen Datensatzeffekt abweichen
     weighted_abs_deviation = stats::weighted.mean(
       x = abs(effect_data_var$effect - overall_effect),
       w = effect_data_var$n_total,
       na.rm = TRUE
     ),
+    # Spannweite der beobachteten Effekte über die Gruppen
     effect_range = safe_range(effect_data_var$effect),
+    # wie geordnet der Effektverlauf über die Gruppen ist
     trend_strength = compute_trend_strength(
       group_id = effect_data_var$group_id,
       effect = effect_data_var$effect
     ),
+    # ob ein Vorzeichenwechsel der Effekte sichtbar ist
     qualitative_signal = has_qualitative_signal(effect_data_var$effect),
     min_arm_n_observed = min(arm_sizes, na.rm = TRUE),
+    # wie oft eine Gruppe pro Arm zu klein wird
     unstable_fraction = mean(arm_sizes < min_arm_n, na.rm = TRUE),
     n_groups = dplyr::n_distinct(effect_data_var$group_id)
-  )
-}
-
-summarise_priority_from_nested_data <- function(data, overall_effect, min_arm_n) {
-  summarise_variable_priority(
-    effect_data_var = data,
-    overall_effect = overall_effect,
-    min_arm_n = min_arm_n
   )
 }
 
@@ -355,22 +372,6 @@ build_variable_priority_table <- function(effect_data, overall_effect, min_arm_n
     dplyr::select(-.data$data) |>
     tidyr::unnest(.data$priority_metrics) |>
     apply_priority_scores()
-}
-
-priority_table_for_display <- function(priority_data) {
-  priority_data |>
-    dplyr::select(
-      .data$x_var,
-      .data$var_type,
-      .data$weighted_abs_deviation,
-      .data$effect_range,
-      .data$trend_strength,
-      .data$qualitative_signal,
-      .data$min_arm_n_observed,
-      .data$unstable_fraction,
-      .data$priority_score,
-      .data$priority_class
-    )
 }
 
 complete_priority_counts <- function(priority_data) {
@@ -620,109 +621,11 @@ reshape_detail_outcome_data <- function(effect_data_var) {
     )
 }
 
-plot_single_detail_curve <- function(effect_data_var, overall_effect, effect_label, outcome_label) {
-  outcome_data <- reshape_detail_outcome_data(effect_data_var)
-  title_text <- effect_data_var |>
-    dplyr::slice_head(n = 1) |>
-    dplyr::pull(.data$x_var) |>
-    as.character()
-  
-  upper_plot <- ggplot2::ggplot(
-    outcome_data,
-    ggplot2::aes(x = .data$group_id, y = .data$mean_y, group = .data$arm)
-  ) +
-    ggplot2::geom_line(ggplot2::aes(linetype = .data$arm), linewidth = 0.4) +
-    ggplot2::geom_point(ggplot2::aes(shape = .data$arm), size = 2) +
-    ggplot2::scale_x_continuous(
-      breaks = effect_data_var$group_id,
-      labels = effect_data_var$x_label_long
-    ) +
-    ggplot2::labs(
-      title = title_text,
-      subtitle = "Arm-specific outcome summary",
-      x = NULL,
-      y = outcome_label,
-      linetype = NULL,
-      shape = NULL
-    ) +
-    ggplot2::theme_minimal(base_size = 10) +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(face = "bold"),
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
-    )
-  
-  lower_plot <- ggplot2::ggplot(
-    effect_data_var,
-    ggplot2::aes(x = .data$group_id, y = .data$effect)
-  ) +
-    ggplot2::geom_hline(yintercept = 0, linewidth = 0.3) +
-    ggplot2::geom_hline(
-      yintercept = overall_effect,
-      linetype = 2,
-      linewidth = 0.3
-    ) +
-    ggplot2::geom_linerange(
-      ggplot2::aes(ymin = .data$ci_low, ymax = .data$ci_high),
-      linewidth = 0.3
-    ) +
-    ggplot2::geom_line(linewidth = 0.4) +
-    ggplot2::geom_point(ggplot2::aes(size = .data$n_total), alpha = 0.9) +
-    ggplot2::scale_x_continuous(
-      breaks = effect_data_var$group_id,
-      labels = effect_data_var$x_label_long
-    ) +
-    ggplot2::scale_size_continuous(range = c(2, 3), guide = "none") +
-    ggplot2::labs(
-      subtitle = "Observed treatment effect by covariate group",
-      x = NULL,
-      y = effect_label
-    ) +
-    ggplot2::theme_minimal(base_size = 10) +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
-    )
-  
-  upper_plot / lower_plot
-}
 
 print_plot_object <- function(plot_object) {
   print(plot_object)
 }
 
-
-
-render_task1_dataset_section <- function(data) {
-  dataset_id <- extract_dataset_id_from_path(csv_file)
-  
-  visual_object <- build_task1_visual_object(
-    data = data,
-    dataset_id = dataset_id,
-    n_bins = n_bins,
-    min_arm_n = min_arm_n
-  )
-  
-  cat("\n\n")
-  cat("## Dataset ", visual_object$dataset_id, "\n\n", sep = "")
-  cat(
-    "All variables are shown. Numeric prioritisation is used only to order and colour the plots for faster visual review.\n\n"
-  )
-  
-  build_dataset_info_table(visual_object, data) |>
-    write_kable_output(digits = 3)
-  
-  cat("### Dataset priority overview\n\n")
-  visual_object$dataset_priority_summary |>
-    write_kable_output(digits = 3)
-  
-  plot_task1_overview_pages(
-    effect_data = visual_object$effect_data,
-    overall_effect = visual_object$overall_effect,
-    effect_label = visual_object$effect_label,
-    page_size = 9L,
-    ncol = 3L
-  ) |>
-    purrr::walk(print_plot_object)
-}
 
 merge_task1_review_sheet <- function(review_template, review_path) {
   if (!fs::file_exists(review_path)) {
@@ -783,17 +686,6 @@ build_review_template <- function(dataset_manifest) {
     )
 }
 
-review_sheet_base_cols <- function() {
-  c(
-    "dataset_id",
-    "endpoint",
-    "n_obs",
-    "n_vars",
-    "n_bins",
-    "visual_teh_assessment",
-    "reviewer_note"
-  )
-}
 
 coalesce_review_column <- function(data, col_name) {
   new_col <- rlang::sym(paste0(col_name, "_new"))
