@@ -35,7 +35,7 @@ data_dir <- here::here("ressources", "Datasets", "Datasets", "Blinded_data_sets"
 results_dir <- here::here("results")
 
 csv_files <- dir_ls(data_dir, recurse = TRUE, glob = "*.csv")
-
+#csv_files <- csv_files[1]
 #my_files <- csv_files[1:15]
 
 ```

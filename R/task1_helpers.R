@@ -309,9 +309,9 @@ plot_single_effect_curve <- function(effect_data_var, overall_effect, effect_lab
     )
 }
 
-make_plot_for_variable <- function(x_var, effect_data, overall_effect, effect_label) {
+make_plot_for_variable <- function(var_name, effect_data, overall_effect, effect_label) {
   effect_data_var <- effect_data |>
-    dplyr::filter(.data$x_var == x_var)
+    dplyr::filter(.data$x_var == .env$var_name)
   
   plot_single_effect_curve(
     effect_data_var = effect_data_var,
