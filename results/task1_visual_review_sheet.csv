@@ -1,4 +1,6 @@
-dataset_id;endpoint;n_obs;n_vars;binary_covariates;continuous_covariates;n_bins;visual_teh_assessment;reviewer_note
-1222;binary;150;50;20;30;4;NA;NA
-1652;continuous;150;15;3;12;4;NA;NA
-1964;binary;500;6;1;5;6;NA;NA
+dataset_id;endpoint;n_obs;n_vars;n_bins;visual_teh_assessment;reviewer_note
+1222;binary;150;50;4;;
+1652;continuous;150;15;4;;
+1964;binary;500;6;6;;
+2119;continuous;700;6;8;;
+2318;continuous;700;50;8;;
