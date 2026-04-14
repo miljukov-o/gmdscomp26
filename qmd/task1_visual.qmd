@@ -1,0 +1,88 @@
+---
+title: "Task 1: Treatment Effect Heterogeneity"
+subtitle: "Visual Assessment"
+project:
+  type: default
+  output-dir: results
+  execute-dir: project
+format:
+  html:
+    toc: true
+    code-fold: false
+    embed-resources: true
+execute:
+  freeze: auto
+  echo: true
+  warning: false
+  message: false
+  cache: false
+params:
+  n_bins: !expr NULL
+---
+
+## Setup
+
+```{r}
+library(tidyverse)
+library(glue)
+library(patchwork)
+library(knitr)
+library(here)
+library(fs)
+source(here::here("R", "task1_helpers.R"))
+
+data_dir <- here::here("ressources", "Datasets", "Datasets", "Blinded_data_sets")
+results_dir <- here::here("results")
+
+csv_files <- dir_ls(data_dir, recurse = TRUE, glob = "*.csv")
+
+#my_files <- csv_files[1:15]
+
+```
+
+## Analyse all datasets
+
+Für welchen Datensatz sehe ich eine grafisch plausible, einfache Heterogenitätsstruktur und woran genau?
+
+```{r}
+dataset_manifest <- purrr::map(
+  csv_files,
+  summarise_dataset_manifest_entry,
+  n_bins = params$n_bins
+) |>
+  purrr::list_rbind() |>
+  dplyr::arrange(.data$dataset_id)
+
+knitr::kable(dataset_manifest)
+
+task1_review_sheet <- dataset_manifest |>
+  dplyr::transmute(
+    dataset_id,
+    endpoint,
+    n,
+    p,
+    n_bins_used,
+    visual_teh_assessment = NA_character_,
+    reviewer_note = NA_character_
+  )
+
+readr::write_csv(
+  task1_review_sheet,
+  file.path(results_dir, "task1_visual_review_sheet.csv")
+)
+```
+
+
+## Plots by dataset
+
+```{r}
+#| results: asis
+#| fig-width: 13
+#| fig-height: 10
+
+purrr::walk(
+  csv_files,
+  render_task1_dataset_section,
+  n_bins = params$n_bins
+)
+```
