@@ -38,7 +38,7 @@ data_dir <- here::here("ressources", "Datasets", "Datasets", "Blinded_data_sets"
 
 csv_files <- get_csv_file_names(data_dir)
 
-csv_files <- csv_files[1:5]
+#csv_files <- csv_files[1]
 
 dataset_records <- build_task1_dataset_records(
   csv_files = csv_files,

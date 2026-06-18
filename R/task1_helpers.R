@@ -8,9 +8,9 @@ priority_colors <- c(
 get_csv_file_names <- function(data_dir) {
   fs::dir_ls(data_dir, recurse = TRUE, glob = "*.csv") |>
     tibble::tibble(path = _) |>
-    dplyr::mutate(dataset_id = purrr::map_int(.data$path, extract_dataset_id_from_path)) |>
-    dplyr::arrange(.data$dataset_id) |>
-    dplyr::pull(.data$path)
+    dplyr::mutate(dataset_id = purrr::map_int(path, extract_dataset_id_from_path)) |>
+    dplyr::arrange(dataset_id) |>
+    dplyr::pull(path)
 }
 
 format_number <- function(x) {
@@ -89,48 +89,48 @@ read_task1_dataset <- function(csv_file) {
 
 compute_overall_effect <- function(data) {
   data |>
-    dplyr::group_by(.data$W) |>
-    dplyr::summarise(y_mean = mean(.data$Y), .groups = "drop") |>
-    dplyr::mutate(arm = dplyr::if_else(.data$W == 1, "treatment", "control")) |>
-    dplyr::select(-.data$W) |>
+    dplyr::group_by(W) |>
+    dplyr::summarise(y_mean = mean(Y), .groups = "drop") |>
+    dplyr::mutate(arm = dplyr::if_else(W == 1, "treatment", "control")) |>
+    dplyr::select(-W) |>
     tidyr::pivot_wider(
-      names_from = .data$arm,
-      values_from = .data$y_mean,
+      names_from = arm,
+      values_from = y_mean,
       names_prefix = "y_mean_"
     ) |>
-    dplyr::mutate(overall_effect = .data$y_mean_treatment - .data$y_mean_control) |>
-    dplyr::pull(.data$overall_effect)
+    dplyr::mutate(overall_effect = y_mean_treatment - y_mean_control) |>
+    dplyr::pull(overall_effect)
 }
 
 make_binary_grouped_data <- function(data, x_var) {
   data |>
     dplyr::mutate(
-      ptid = .data$ptid,
-      Y = .data$Y,
-      W = .data$W,
+      ptid = ptid,
+      Y = Y,
+      W = W,
       x_value = as.numeric(.data[[x_var]]),
-      group_id = dplyr::if_else(.data$x_value == 0, 1L, 2L),
-      x_center = .data$x_value,
-      x_label_short = as.character(.data$x_value),
-      x_label_long = as.character(.data$x_value)
+      group_id = dplyr::if_else(x_value == 0, 1L, 2L),
+      x_center = x_value,
+      x_label_short = as.character(x_value),
+      x_label_long = as.character(x_value)
     )
 }
 
 make_continuous_grouped_data <- function(data, x_var, n_bins) {
   data |>
     dplyr::mutate(
-      ptid = .data$ptid,
-      Y = .data$Y,
-      W = .data$W,
+      ptid = ptid,
+      Y = Y,
+      W = W,
       x_value = .data[[x_var]],
-      group_id = dplyr::ntile(.data$x_value, n_bins)
+      group_id = dplyr::ntile(x_value, n_bins)
     ) |>
-    dplyr::group_by(.data$group_id) |>
+    dplyr::group_by(group_id) |>
     dplyr::mutate(
-      x_center = stats::median(.data$x_value),
-      x_label_short = paste0("B", dplyr::first(.data$group_id)),
+      x_center = stats::median(x_value),
+      x_label_short = paste0("B", dplyr::first(group_id)),
       x_label_long = glue::glue(
-        "{format_number(min(.data$x_value))} to {format_number(max(.data$x_value))}"
+        "{format_number(min(x_value))} to {format_number(max(x_value))}"
       )
     ) |>
     dplyr::ungroup()
@@ -149,27 +149,27 @@ make_grouped_data <- function(data, x_var, n_bins) {
 summarise_arm_level <- function(grouped_data) {
   grouped_data |>
     dplyr::group_by(
-      .data$group_id,
-      .data$x_center,
-      .data$x_label_short,
-      .data$x_label_long,
-      .data$W
+      group_id,
+      x_center,
+      x_label_short,
+      x_label_long,
+      W
     ) |>
     dplyr::summarise(
       n = dplyr::n(),
-      y_mean = mean(.data$Y),
-      y_var = stats::var(.data$Y),
+      y_mean = mean(Y),
+      y_var = stats::var(Y),
       .groups = "drop"
     ) |>
-    dplyr::mutate(arm = dplyr::if_else(.data$W == 1, "treatment", "control")) |>
-    dplyr::select(-.data$W) |>
+    dplyr::mutate(arm = dplyr::if_else(W == 1, "treatment", "control")) |>
+    dplyr::select(-W) |>
     tidyr::pivot_wider(
-      names_from = .data$arm,
-      values_from = c(.data$n, .data$y_mean, .data$y_var),
+      names_from = arm,
+      values_from = c(n, y_mean, y_var),
       names_sep = "_",
       values_fill = list(n = 0, y_mean = NA_real_, y_var = NA_real_)
     ) |>
-    dplyr::arrange(.data$group_id)
+    dplyr::arrange(group_id)
 }
 
 compute_binary_effect_se <- function(arm_summary) {
@@ -219,27 +219,27 @@ summarise_variable_effect <- function(x_var, data, endpoint_type, n_bins) {
       se = se,
       x_var = x_var,
       var_type = var_type,
-      n_total = .data$n_treatment + .data$n_control,
-      effect = .data$y_mean_treatment - .data$y_mean_control,
-      ci_low = .data$effect - 1.96 * .data$se,
-      ci_high = .data$effect + 1.96 * .data$se
+      n_total = n_treatment + n_control,
+      effect = y_mean_treatment - y_mean_control,
+      ci_low = effect - 1.96 * se,
+      ci_high = effect + 1.96 * se
     ) |>
     dplyr::select(
-      .data$x_var,
-      .data$var_type,
-      .data$group_id,
-      .data$x_center,
-      .data$x_label_short,
-      .data$x_label_long,
-      .data$n_control,
-      .data$n_treatment,
-      .data$n_total,
-      .data$y_mean_control,
-      .data$y_mean_treatment,
-      .data$effect,
-      .data$se,
-      .data$ci_low,
-      .data$ci_high
+      x_var,
+      var_type,
+      group_id,
+      x_center,
+      x_label_short,
+      x_label_long,
+      n_control,
+      n_treatment,
+      n_total,
+      y_mean_control,
+      y_mean_treatment,
+      effect,
+      se,
+      ci_low,
+      ci_high
     )
 }
 
@@ -337,40 +337,40 @@ summarise_variable_priority <- function(effect_data_var, overall_effect, min_arm
 apply_priority_scores <- function(priority_data) {
   priority_data |>
     dplyr::mutate(
-      deviation_rank = rank_to_unit(.data$weighted_abs_deviation),
-      range_rank = rank_to_unit(.data$effect_range),
-      trend_rank = rank_to_unit(.data$trend_strength),
+      deviation_rank = rank_to_unit(weighted_abs_deviation),
+      range_rank = rank_to_unit(effect_range),
+      trend_rank = rank_to_unit(trend_strength),
       priority_score =
-        0.45 * .data$deviation_rank +
-        0.25 * .data$range_rank +
-        0.15 * .data$trend_rank +
-        0.25 * .data$qualitative_signal -
-        0.25 * .data$unstable_fraction,
+        0.45 * deviation_rank +
+        0.25 * range_rank +
+        0.15 * trend_rank +
+        0.25 * qualitative_signal -
+        0.25 * unstable_fraction,
       priority_class = dplyr::case_when(
-        .data$priority_score >= 0.75 & .data$unstable_fraction <= 0.25 ~ "high",
-        .data$priority_score >= 0.45 ~ "medium",
+        priority_score >= 0.75 & unstable_fraction <= 0.25 ~ "high",
+        priority_score >= 0.45 ~ "medium",
         TRUE ~ "low"
       ),
-      priority_class = factor(.data$priority_class, levels = priority_class_levels),
-      priority_color = unname(priority_colors[as.character(.data$priority_class)])
+      priority_class = factor(priority_class, levels = priority_class_levels),
+      priority_color = unname(priority_colors[as.character(priority_class)])
     ) |>
-    dplyr::arrange(.data$priority_class, dplyr::desc(.data$priority_score), .data$x_var) |>
+    dplyr::arrange(priority_class, dplyr::desc(priority_score), x_var) |>
     dplyr::mutate(priority_rank = dplyr::row_number())
 }
 
 build_variable_priority_table <- function(effect_data, overall_effect, min_arm_n = 10L) {
   effect_data |>
-    tidyr::nest(data = -c(.data$x_var, .data$var_type)) |>
+    tidyr::nest(data = -c(x_var, var_type)) |>
     dplyr::mutate(
       priority_metrics = purrr::map(
-        .x = .data$data,
+        .x = data,
         .f = summarise_variable_priority,
         overall_effect = overall_effect,
         min_arm_n = min_arm_n
       )
     ) |>
-    dplyr::select(-.data$data) |>
-    tidyr::unnest(.data$priority_metrics) |>
+    dplyr::select(-data) |>
+    tidyr::unnest(priority_metrics) |>
     apply_priority_scores()
 }
 
@@ -378,17 +378,17 @@ complete_priority_counts <- function(priority_data) {
   tibble::tibble(priority_class = factor(priority_class_levels, levels = priority_class_levels)) |>
     dplyr::left_join(
       priority_data |>
-        dplyr::count(.data$priority_class, name = "n_vars"),
+        dplyr::count(priority_class, name = "n_vars"),
       by = "priority_class"
     ) |>
-    dplyr::mutate(n_vars = tidyr::replace_na(.data$n_vars, 0L))
+    dplyr::mutate(n_vars = tidyr::replace_na(n_vars, 0L))
 }
 
 collapse_top_priority_vars <- function(priority_data, n_top = 5L) {
   priority_data |>
-    dplyr::arrange(.data$priority_class, dplyr::desc(.data$priority_score), .data$x_var) |>
+    dplyr::arrange(priority_class, dplyr::desc(priority_score), x_var) |>
     dplyr::slice_head(n = n_top) |>
-    dplyr::pull(.data$x_var) |>
+    dplyr::pull(x_var) |>
     as.character() |>
     paste(collapse = ", ")
 }
@@ -398,16 +398,16 @@ summarise_dataset_priority <- function(priority_data) {
   
   tibble::tibble(
     n_high = counts |>
-      dplyr::filter(.data$priority_class == "high") |>
-      dplyr::pull(.data$n_vars),
+      dplyr::filter(priority_class == "high") |>
+      dplyr::pull(n_vars),
     n_medium = counts |>
-      dplyr::filter(.data$priority_class == "medium") |>
-      dplyr::pull(.data$n_vars),
+      dplyr::filter(priority_class == "medium") |>
+      dplyr::pull(n_vars),
     n_low = counts |>
-      dplyr::filter(.data$priority_class == "low") |>
-      dplyr::pull(.data$n_vars),
-    prop_high = .data$n_high / nrow(priority_data),
-    prop_medium_or_higher = (.data$n_high + .data$n_medium) / nrow(priority_data),
+      dplyr::filter(priority_class == "low") |>
+      dplyr::pull(n_vars),
+    prop_high = n_high / nrow(priority_data),
+    prop_medium_or_higher = (n_high + n_medium) / nrow(priority_data),
     max_priority_score = max(priority_data$priority_score, na.rm = TRUE),
     mean_priority_score = mean(priority_data$priority_score, na.rm = TRUE),
     top_priority_vars = collapse_top_priority_vars(priority_data)
@@ -429,8 +429,8 @@ build_dataset_priority_summary <- function(priority_data) {
   summarise_dataset_priority(priority_data) |>
     dplyr::mutate(
       dataset_priority_hint = derive_dataset_priority_hint(
-        n_high = .data$n_high,
-        n_medium = .data$n_medium
+        n_high = n_high,
+        n_medium = n_medium
       )
     )
 }
@@ -442,22 +442,22 @@ join_priority_metrics <- function(effect_data, priority_data, x_cols) {
     dplyr::left_join(
       priority_data |>
         dplyr::select(
-          .data$x_var,
-          .data$var_type,
-          .data$priority_score,
-          .data$priority_class,
-          .data$priority_color,
-          .data$priority_rank,
-          .data$weighted_abs_deviation,
-          .data$effect_range,
-          .data$trend_strength,
-          .data$qualitative_signal,
-          .data$min_arm_n_observed,
-          .data$unstable_fraction
+          x_var,
+          var_type,
+          priority_score,
+          priority_class,
+          priority_color,
+          priority_rank,
+          weighted_abs_deviation,
+          effect_range,
+          trend_strength,
+          qualitative_signal,
+          min_arm_n_observed,
+          unstable_fraction
         ),
       by = c("x_var", "var_type")
     ) |>
-    dplyr::mutate(x_var = factor(.data$x_var, levels = x_cols))
+    dplyr::mutate(x_var = factor(x_var, levels = x_cols))
 }
 
 build_task1_visual_object <- function(data, dataset_id = NA_integer_, n_bins = NULL, min_arm_n = 10L) {
@@ -481,7 +481,7 @@ build_task1_visual_object <- function(data, dataset_id = NA_integer_, n_bins = N
     overall_effect = overall_effect,
     min_arm_n = min_arm_n
   ) |>
-    dplyr::mutate(x_var = factor(.data$x_var, levels = x_cols))
+    dplyr::mutate(x_var = factor(x_var, levels = x_cols))
   
   list(
     dataset_id = dataset_id,
@@ -515,7 +515,7 @@ extract_plot_metadata <- function(effect_data_var) {
 plot_single_effect_curve <- function(effect_data_var, overall_effect, effect_label) {
   plot_metadata <- extract_plot_metadata(effect_data_var)
   
-  ggplot2::ggplot(effect_data_var, ggplot2::aes(x = .data$group_id, y = .data$effect)) +
+  ggplot2::ggplot(effect_data_var, ggplot2::aes(x = group_id, y = effect)) +
     ggplot2::geom_hline(yintercept = 0, linewidth = 0.3) +
     ggplot2::geom_hline(
       yintercept = overall_effect,
@@ -523,11 +523,11 @@ plot_single_effect_curve <- function(effect_data_var, overall_effect, effect_lab
       linewidth = 0.3
     ) +
     ggplot2::geom_linerange(
-      ggplot2::aes(ymin = .data$ci_low, ymax = .data$ci_high),
+      ggplot2::aes(ymin = ci_low, ymax = ci_high),
       linewidth = 0.3
     ) +
     ggplot2::geom_line(linewidth = 0.4) +
-    ggplot2::geom_point(ggplot2::aes(size = .data$n_total), alpha = 0.9) +
+    ggplot2::geom_point(ggplot2::aes(size = n_total), alpha = 0.9) +
     ggplot2::scale_x_continuous(
       breaks = effect_data_var$group_id,
       labels = effect_data_var$x_label_short
@@ -554,7 +554,7 @@ plot_single_effect_curve <- function(effect_data_var, overall_effect, effect_lab
 
 make_plot_for_variable <- function(var_name, effect_data, overall_effect, effect_label) {
   effect_data |>
-    dplyr::filter(.data$x_var == .env$var_name) |>
+    dplyr::filter(x_var == .env$var_name) |>
     plot_single_effect_curve(
       overall_effect = overall_effect,
       effect_label = effect_label
@@ -578,12 +578,12 @@ make_overview_page_plot <- function(x_vars, effect_data, overall_effect, effect_
 
 get_priority_ordered_x_vars <- function(effect_data) {
   effect_data |>
-    dplyr::distinct(.data$x_var, .data$priority_class, .data$priority_score) |>
+    dplyr::distinct(x_var, priority_class, priority_score) |>
     dplyr::mutate(
-      priority_class = factor(.data$priority_class, levels = priority_class_levels)
+      priority_class = factor(priority_class, levels = priority_class_levels)
     ) |>
-    dplyr::arrange(.data$priority_class, dplyr::desc(.data$priority_score), .data$x_var) |>
-    dplyr::pull(.data$x_var) |>
+    dplyr::arrange(priority_class, dplyr::desc(priority_score), x_var) |>
+    dplyr::pull(x_var) |>
     as.character()
 }
 
@@ -602,19 +602,19 @@ plot_task1_overview_pages <- function(effect_data, overall_effect, effect_label,
 reshape_detail_outcome_data <- function(effect_data_var) {
   effect_data_var |>
     dplyr::select(
-      .data$group_id,
-      .data$x_label_long,
-      .data$y_mean_control,
-      .data$y_mean_treatment
+      group_id,
+      x_label_long,
+      y_mean_control,
+      y_mean_treatment
     ) |>
     tidyr::pivot_longer(
-      cols = c(.data$y_mean_control, .data$y_mean_treatment),
+      cols = c(y_mean_control, y_mean_treatment),
       names_to = "arm",
       values_to = "mean_y"
     ) |>
     dplyr::mutate(
       arm = dplyr::recode(
-        .data$arm,
+        arm,
         y_mean_control = "Control",
         y_mean_treatment = "Treatment"
       )
@@ -660,7 +660,7 @@ merge_task1_review_sheet <- function(review_template, review_path) {
       dplyr::all_of(names(review_template)),
       dplyr::all_of(extra_existing_cols)
     ) |>
-    dplyr::arrange(.data$dataset_id)
+    dplyr::arrange(dataset_id)
 }
 
 init_task1_review_sheet <- function(dataset_manifest, review_path) {
@@ -674,11 +674,11 @@ init_task1_review_sheet <- function(dataset_manifest, review_path) {
 build_review_template <- function(dataset_manifest) {
   dataset_manifest |>
     dplyr::select(
-      .data$dataset_id,
-      .data$endpoint,
-      .data$n_obs,
-      .data$n_vars,
-      .data$n_bins
+      dataset_id,
+      endpoint,
+      n_obs,
+      n_vars,
+      n_bins
     ) |>
     dplyr::mutate(
       visual_teh_assessment = NA_character_,
@@ -769,7 +769,7 @@ build_dataset_manifest <- function(dataset_records) {
     .f = pluck_manifest_row
   ) |>
     purrr::list_rbind() |>
-    dplyr::arrange(.data$dataset_id)
+    dplyr::arrange(dataset_id)
 }
 
 pluck_manifest_row <- function(dataset_record) {
@@ -783,10 +783,10 @@ build_task1_dataset_triage_table <- function(dataset_records) {
   ) |>
     purrr::list_rbind() |>
     dplyr::arrange(
-      dplyr::desc(.data$n_high),
-      dplyr::desc(.data$n_medium),
-      dplyr::desc(.data$max_priority_score),
-      .data$dataset_id
+      dplyr::desc(n_high),
+      dplyr::desc(n_medium),
+      dplyr::desc(max_priority_score),
+      dataset_id
     )
 }
 
