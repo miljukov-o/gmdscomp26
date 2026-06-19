@@ -77,7 +77,35 @@ my_method_template <- function(file_path, data, options = list()) {
     simple_rule = "No",                              # Example: "S=1 if X3 > 0.4". Use "No" if none.
     x_classification = x_classification,
     S = rep(0L, nrow(data)),
-    metadata = list(method = "template_method")      # Optional notes; safe to remove.
+    
+    # The metadata list is our internal method card.
+    # Please keep the same metadata field names across methods.
+    # If your method cannot estimate a field, use NA_real_ or NA_character_.
+    # These fields are not part of the official submission table,
+    # but they are used to compare methods across datasets.
+    metadata = list(method = "template_method",      # Optional notes; safe to remove.
+      n = nrow(data),
+      p = length(x_cols),
+      endpoint = guess_endpoint_from_y(data),
+      
+      hte_score = NA_real_,
+      separation = NA_real_,
+      separation_se = NA_real_,
+      separation_lcb = NA_real_,
+      
+      subgroup_proportion = NA_real_,
+      n_S1 = NA_integer_,
+      n_S0 = NA_integer_,
+      
+      s_stability = NA_real_,
+      rule_complexity = NA_character_,
+      
+      n_predictive = NA_integer_,
+      predictive_vars = NA_character_,
+      prognostic_vars = NA_character_,
+      
+      warning = NA_character_
+    )
   )
 }
 
@@ -131,6 +159,7 @@ example_x1_split_method <- function(file_path, data, options = list()) {
     simple_rule = if (has_heterogeneity) paste0("S=1 if X1 > ", signif(cutoff, 3)) else "No",
     x_classification = x_classification,
     S = S,
+    # TODO: @all, add fields like in the template for the method card
     metadata = list(
       method = "example_x1_split_method",
       rule_cutoff = cutoff,
