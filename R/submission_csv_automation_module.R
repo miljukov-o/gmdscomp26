@@ -76,6 +76,7 @@ my_method_template <- function(file_path, data, options = list()) {
     treatment_effect_complement = NA_real_,          # Estimated treatment effect for S=0.
     simple_rule = "No",                              # Example: "S=1 if X3 > 0.4". Use "No" if none.
     x_classification = x_classification,
+    S = rep(0L, nrow(data)),
     metadata = list(method = "template_method")      # Optional notes; safe to remove.
   )
 }
@@ -129,6 +130,7 @@ example_x1_split_method <- function(file_path, data, options = list()) {
     treatment_effect_complement = te_complement,
     simple_rule = if (has_heterogeneity) paste0("S=1 if X1 > ", signif(cutoff, 3)) else "No",
     x_classification = x_classification,
+    S = S,
     metadata = list(
       method = "example_x1_split_method",
       rule_cutoff = cutoff,
@@ -151,11 +153,21 @@ run_submission_batch <- function(input_folder,
                                  output_prefix = "Submission_Results",
                                  metadata_prefix = "Analysis_Metadata",
                                  write_metadata = TRUE,
+                                 # If write_s_files = TRUE, your method must also return S:
+                                 #   S = integer vector of length nrow(data), containing only 0 and 1.
+                                 write_s_files = FALSE,
+                                 s_output_subfolder = "Datasets_with_S",
+                                 s_column_name = "S",
                                  include_error_rows = TRUE,
                                  verbose = TRUE) {
   if (!dir.exists(input_folder)) stop("input_folder does not exist: ", input_folder)
   if (!dir.exists(output_folder)) dir.create(output_folder, recursive = TRUE)
   if (!is.function(method_fun)) stop("method_fun must be a function.")
+  s_output_folder <- NULL
+  if (isTRUE(write_s_files)) {
+    s_output_folder <- file.path(output_folder, s_output_subfolder)
+    if (!dir.exists(s_output_folder)) dir.create(s_output_folder, recursive = TRUE)
+  }
 
   file_list <- list.files(input_folder, pattern = file_pattern, full.names = TRUE)
 
@@ -184,6 +196,17 @@ run_submission_batch <- function(input_folder,
 
       submission_row <- make_submission_row(method_output, file_path, max_cov = max_cov)
 
+      s_file_path <- NULL
+      if (isTRUE(write_s_files)) {
+        s_file_path <- write_dataset_with_s(
+          data = data,
+          method_output = method_output,
+          file_path = file_path,
+          output_folder = s_output_folder,
+          s_column_name = s_column_name
+        )
+      }
+      
       if (verbose) {
         cat("  Endpoint:", submission_row[["Endpoint"]],
             "| Heterogeneity:", submission_row[["Subgroup/Treatment Effect Heterogeneity (Yes/No)"]],
@@ -193,7 +216,8 @@ run_submission_batch <- function(input_folder,
       list(
         ok = TRUE,
         submission_row = submission_row,
-        metadata = method_output$metadata %||% NULL
+        metadata = method_output$metadata %||% NULL,
+        s_file_path = s_file_path
       )
     }, error = function(e) {
       if (verbose) cat("  ERROR:", conditionMessage(e), "\n")
@@ -236,12 +260,14 @@ run_submission_batch <- function(input_folder,
     cat("\nProcessing complete.\n")
     cat("Submission CSV saved to:\n", submission_csv_path, "\n", sep = "")
     if (!is.null(metadata_csv_path)) cat("Metadata CSV saved to:\n", metadata_csv_path, "\n", sep = "")
+    if (!is.null(s_output_folder)) cat("Datasets with S saved to:\n", s_output_folder, "\n", sep = "")
   }
 
   invisible(list(
     submission = final_submission,
     submission_csv_path = submission_csv_path,
-    metadata_csv_path = metadata_csv_path
+    metadata_csv_path = metadata_csv_path,
+    s_output_folder = s_output_folder
   ))
 }
 
@@ -304,6 +330,9 @@ latest_abc_method <- function(file_path, data, options = list()) {
     treatment_effect_complement = result$results$treatment_effect_complement_S0[1],
     simple_rule = simple_rule,
     x_classification = x_classification,
+    # TODO:
+     # If the ABC function returns a subgroup assignment vector, include it here. e.g.
+     # S = result$subgroup_assignment,
     metadata = result$results
   )
 }
@@ -499,4 +528,57 @@ make_metadata_row <- function(metadata, file_path) {
     metadata,
     list(stringsAsFactors = FALSE, check.names = FALSE)
   ))
+}
+
+get_s_vector <- function(method_output, n) {
+  S <- method_output$S %||% method_output$s %||% method_output$subgroup_assignment
+  
+  if (is.null(S)) {
+    stop("write_s_files=TRUE requires method_output$S, method_output$s, or method_output$subgroup_assignment.")
+  }
+  
+  if (is.data.frame(S)) {
+    if ("S" %in% names(S)) {
+      S <- S[["S"]]
+    } else if ("s" %in% names(S)) {
+      S <- S[["s"]]
+    } else {
+      stop("S data.frame must contain a column named S or s.")
+    }
+  }
+  
+  if (length(S) != n) {
+    stop("S must have length nrow(data). Got length ", length(S), " for n = ", n, ".")
+  }
+  
+  S <- suppressWarnings(as.integer(S))
+  
+  if (any(is.na(S)) || any(!(S %in% c(0L, 1L)))) {
+    stop("S must contain only 0 and 1, with no missing values.")
+  }
+  
+  S
+}
+
+write_dataset_with_s <- function(data,
+                                 method_output,
+                                 file_path,
+                                 output_folder,
+                                 s_column_name = "S") {
+  S <- get_s_vector(method_output, n = nrow(data))
+  
+  out <- data
+  out[[s_column_name]] <- S
+  
+  if ("ptid" %in% names(out)) {
+    out <- out[order(out$ptid), , drop = FALSE]
+  }
+  
+  out_path <- file.path(
+    output_folder,
+    paste0(submission_dataset_name(file_path), "_with_S.csv")
+  )
+  
+  write.csv(out, out_path, row.names = FALSE, na = "")
+  out_path
 }
